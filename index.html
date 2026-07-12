@@ -72,5 +72,8 @@
 const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in')})},{threshold:.25});
 document.querySelectorAll('.rev').forEach(el=>io.observe(el));
 </script>
+<!-- SOMA standard §8: canonical feedback chip → shared review queue -->
+<link rel="stylesheet" href="/vendor/soma-feedback/soma-feedback.css">
+<script src="/vendor/soma-feedback/soma-feedback.js" data-site="lessig-ish-style" data-area="landing" data-no-google defer></script>
 </body>
 </html>
