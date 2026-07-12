@@ -1,0 +1,83 @@
+/* Lessig-ish Style — the site is itself a Lessig-ish presentation.
+   Black. One idea per screen. Big type. It reveals as you move. */
+:root{
+  --bg:#000; --fg:#fff; --faint:#6b6b6b; --muted:#9a9a9a;
+  --accent:#ffb020; --line:#1c1c1c;
+  --mono:"Courier New",ui-monospace,Menlo,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;line-height:1.25;overflow-x:hidden}
+a{color:inherit}
+
+/* fixed top rule */
+.nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;
+  justify-content:space-between;align-items:center;padding:18px 26px;
+  font-family:var(--mono);font-size:.82rem;letter-spacing:.04em;
+  mix-blend-mode:difference}
+.nav .brand{font-weight:700}
+.nav .brand b{color:var(--accent)}
+.nav a{text-decoration:none;opacity:.85;margin-left:22px}
+.nav a:hover{opacity:1;text-decoration:underline}
+
+/* full-viewport idea sections with snap */
+.deck{scroll-snap-type:y proximity}
+.screen{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;text-align:center;padding:12vh 7vw;scroll-snap-align:center;
+  position:relative}
+.kick{font-family:var(--mono);font-size:.8rem;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:1.4rem}
+.big{font-weight:800;letter-spacing:-.02em;line-height:1.02;
+  font-size:clamp(2.6rem,8.5vw,7rem)}
+.big .am{color:var(--accent)}
+.big .strike{color:var(--faint)}
+.mid{font-weight:700;font-size:clamp(1.8rem,5.5vw,3.6rem);letter-spacing:-.01em}
+.sub{margin-top:1.8rem;max-width:34ch;color:var(--muted);
+  font-size:clamp(1.05rem,2.4vw,1.5rem);line-height:1.5}
+.type{font-family:var(--mono)}
+
+/* reveal on enter */
+.rev{opacity:0;transform:translateY(20px);transition:opacity .7s ease,transform .7s ease}
+.rev.in{opacity:1;transform:none}
+.rev.d1{transition-delay:.12s}.rev.d2{transition-delay:.24s}.rev.d3{transition-delay:.36s}
+@media (prefers-reduced-motion:reduce){.rev{opacity:1;transform:none;transition:none}}
+
+/* CTA buttons */
+.cta{display:inline-flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:2.6rem}
+.btn{font-family:var(--mono);font-size:.95rem;letter-spacing:.03em;
+  padding:.9em 1.5em;border:1.5px solid var(--fg);border-radius:2px;
+  text-decoration:none;transition:all .18s ease;background:transparent;color:var(--fg);cursor:pointer}
+.btn:hover{background:var(--fg);color:var(--bg)}
+.btn.gold{border-color:var(--accent);color:var(--accent)}
+.btn.gold:hover{background:var(--accent);color:#000}
+
+/* scroll cue */
+.cue{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;color:var(--faint);
+  animation:bob 2.2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,7px)}}
+
+/* the invitation block */
+.invite{border:1px solid var(--line);border-radius:6px;padding:clamp(1.6rem,4vw,3rem);
+  max-width:44ch;background:#070707}
+.invite h3{font-family:var(--mono);color:var(--accent);font-size:.85rem;
+  letter-spacing:.2em;text-transform:uppercase;margin-bottom:1rem}
+.invite p{color:var(--muted);font-size:1.05rem;line-height:1.55;margin-bottom:1rem}
+.invite .sig{font-family:var(--mono);color:var(--faint);font-size:.85rem}
+
+/* about page prose */
+.wrap{max-width:760px;margin:0 auto;padding:16vh 7vw 12vh}
+.wrap h1{font-size:clamp(2.2rem,6vw,4rem);font-weight:800;letter-spacing:-.02em;line-height:1.05}
+.wrap h2{font-family:var(--mono);color:var(--accent);font-size:.85rem;letter-spacing:.2em;
+  text-transform:uppercase;margin:3rem 0 1rem}
+.wrap p{color:#d7d7d7;font-size:1.12rem;line-height:1.65;margin:1rem 0;max-width:62ch}
+.wrap .lede{font-size:clamp(1.2rem,2.6vw,1.5rem);color:#fff}
+.wrap ul{margin:1rem 0 1rem 1.1rem;color:#d7d7d7;line-height:1.7}
+.wrap li{margin:.5rem 0}
+.wrap a.link{color:var(--accent);text-decoration:none;border-bottom:1px solid #4a3a10}
+.wrap a.link:hover{border-bottom-color:var(--accent)}
+.foot{border-top:1px solid var(--line);margin-top:5rem;padding-top:1.6rem;
+  font-family:var(--mono);font-size:.8rem;color:var(--faint)}
+.foot b{color:var(--accent)}

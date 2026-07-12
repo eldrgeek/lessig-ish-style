@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lessig-ish Style — a builder & presenter for the fastest way to make an idea land</title>
+<meta name="description" content="Lessig-style presentations are wonderful to watch and brutal to build. Now there's a builder and a presenter. A SOMA app.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="nav">
+  <span class="brand"><b>Lessig-ish</b> Style</span>
+  <span><a href="present.html">Watch</a><a href="about.html">About</a></span>
+</nav>
+
+<main class="deck">
+  <section class="screen">
+    <div class="kick rev">a SOMA app</div>
+    <h1 class="big rev d1">Lessig-<span class="am">ish</span><br>Style</h1>
+    <p class="sub rev d2">The fastest way to make an idea land — one word at a time, in time with the voice.</p>
+    <div class="cta rev d3">
+      <a class="btn gold" href="present.html">▶ Watch the demo</a>
+      <a class="btn" href="about.html">Who is Lessig?</a>
+    </div>
+    <div class="cue">scroll ↓</div>
+  </section>
+
+  <section class="screen">
+    <div class="kick rev">you've seen it</div>
+    <div class="mid rev d1">One word.<br>Then the next.<br>Exactly as it's spoken.</div>
+    <p class="sub rev d2">No bullet points. No wall of text. Just an idea, arriving at the speed of the sentence.</p>
+  </section>
+
+  <section class="screen">
+    <h2 class="big rev">It's wonderful<br>to watch.</h2>
+  </section>
+
+  <section class="screen">
+    <h2 class="big rev">And <span class="strike">brutal</span><br>to build.</h2>
+    <p class="sub rev d1">Every word timed by hand. Every slide a separate act of patience. Most people give up. The ones who don't spend nights on a single talk.</p>
+  </section>
+
+  <section class="screen">
+    <div class="kick rev">so we built the builder</div>
+    <div class="mid rev d1 type">write&nbsp;→&nbsp;preview&nbsp;→&nbsp;<span class="am">publish</span></div>
+    <p class="sub rev d2">Write a script. The words find their own timing against a real voice. Hit publish — the film assembles itself. What took an expert a week takes anyone an afternoon.</p>
+    <div class="cta rev d3"><a class="btn gold" href="present.html">▶ See it work</a></div>
+  </section>
+
+  <section class="screen">
+    <div class="invite rev">
+      <h3>An open invitation</h3>
+      <p><strong>Professor Lessig</strong> — this style is yours. You built it to make a room full of laptops look up, and it worked; a generation of us has been trying to do it by hand ever since.</p>
+      <p>We built a tool so anyone can. We hope it does you proud — and we'd be honored if you'd help guide where it goes.</p>
+      <p><a class="btn gold" href="mailto:mw@mike-wolf.com?subject=Lessig-ish%20Style">Reach out to us →</a></p>
+      <div class="sig">— Mike Wolf & the SOMA team · we're reaching out to you, too.</div>
+    </div>
+  </section>
+
+  <section class="screen">
+    <div class="kick rev">Lessig-ish Style</div>
+    <div class="mid rev d1">Show, don't tell.<br>Now anyone can.</div>
+    <div class="cta rev d2">
+      <a class="btn gold" href="present.html">▶ Watch the demo</a>
+      <a class="btn" href="about.html">About the style</a>
+    </div>
+    <div class="kick rev d3" style="margin-top:3rem;color:var(--faint)">a SOMA app · built with SomaScript + SomaCut · homage to the Lessig Method, unaffiliated</div>
+  </section>
+</main>
+
+<script>
+const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in')})},{threshold:.25});
+document.querySelectorAll('.rev').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>
