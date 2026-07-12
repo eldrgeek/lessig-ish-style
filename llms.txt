@@ -1,0 +1,17 @@
+# Lessig-ish Style
+
+> A SOMA app: a builder and presenter for Lessig-style presentations — one word/idea per
+> slide, revealed in time with the narration. An unaffiliated homage to Lawrence Lessig's
+> "Lessig Method." Wonderful to watch, historically hard to build; this makes it fast.
+
+## Pages
+- / : landing (itself a Lessig-ish scroll deck)
+- /present.html : the word-on-voice presenter demo (ElevenLabs narration + live speed control)
+- /about.html : the Lessig Method, Lawrence Lessig, and an open invitation for him to connect
+
+## Feedback
+- Every page carries the SOMA feedback chip (bottom-left) → the shared SOMA review queue.
+
+## Built with
+- SomaScript (the SOMA scripting language) + SomaCut (the render engine). Part of SOMA
+  (Society of Minds Aligned). Contact: mw@mike-wolf.com
