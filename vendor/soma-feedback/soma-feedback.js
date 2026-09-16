@@ -8,6 +8,38 @@
  * snapshot (pageText) alongside url/title so the intake AI has real page
  * context, not just a URL. Additive — backends that ignore the field are
  * unaffected. See feedback item 6dfa6acc.
+ * v3.3 — 2026-07-15 (soma-feedback chip v3): opening the chip now offers two
+ * registers — "Request a change" (unchanged, existing clarify/build-intent
+ * flow below) and "Leave a review / say thanks" (new). Review submissions
+ * post with kind:"review", a freeform text + optional 1-5 star signal, and
+ * NEVER enter the clarify loop or the build-by-intent path — they are
+ * recognition surfaced to the team, not build-queue work items. Mike, viewing
+ * the soma-briefings partnership page (2026-07-15): "I'd like to say 'Thank
+ * you' there, not here."
+ * v4.1 — 2026-08-07: introduce-once. First time a visitor opens the panel, a
+ * one-line intro shows above the composer; it's marked seen immediately and
+ * never shown again from this browser. Mirrors the pattern already built for
+ * Bill on Legends (soma-guide.js's `<namespace>:<id>:introduced` localStorage
+ * gate) — Mike: "recover that flow and do something like it for all SOMA
+ * affordances." The gate itself (`affordanceIntroduced`/
+ * `markAffordanceIntroduced` below) is written as a small, self-contained,
+ * copy-once snippet — not an import — because this widget is explicitly
+ * zero-dependency/single-file by design (see distribution note below), same
+ * as soma-guide.js; an ES-module extraction would break that model. See
+ * SOMA/standards/SOMA-AFFORDANCE-INTRO-ONCE.md for the documented pattern so
+ * the next affordance copies this instead of hand-rolling it (as Quinn's
+ * admin-changelog.html did for Legends).
+ * v4.2 — 2026-09-16: the tab can be dragged anywhere, and each site remembers
+ * where it was put, per browser (Mike: "letting the feedback chip be draggable
+ * as a SOMA standard and remember location per instance"; per site, per
+ * browser, ruled the same day). Found because the tab sat exactly on Live
+ * Edit's "Edit copy" button. A tap still opens the panel: a drag only starts
+ * after 5px of movement. Arrow keys move the focused tab (Shift for bigger
+ * steps) and Home puts it back in the default corner. The panel and the toast
+ * open toward the middle of the screen from wherever the tab is. Position is
+ * kept as offsets from the nearest corner, so a resize keeps the tab where it
+ * was and clamps it back into view. Also carries the opt-in fresh-build
+ * checker (SOMA 4f63b3c), which shipped without a version line.
  *
  * A single embeddable, framework-free feedback widget: a bottom-left tab
  * opens a compact panel where a participant can say what should change.
@@ -29,6 +61,11 @@
  *   data-label             optional; tab label, default "Feedback".
  *   data-area              optional; coarse origin label.
  *   data-google-client-id  optional; Google Identity Services client ID.
+ *
+ * Optional fresh-build checking: declare <meta name="soma-build" content="SHA">
+ * and serve /version.json as {"build":"SHA"}. Sites with drafts/saves expose
+ * window.SOMA_HAS_UNSAVED = function () { return dirty || saving; }.
+ * See SOMA-STD-fresh-build.md for the complete opt-in contract.
  *
  * Optional page-level global:
  *   window.somaFeedbackIdentity — function returning { name, email } or a
@@ -102,6 +139,24 @@
     catch (_) { /* localStorage may be unavailable; non-fatal. */ }
   }
 
+  // ── Introduce-once (v4.1) ──────────────────────────────────────────────
+  // A generalizable, copy-once primitive for "this SOMA affordance should
+  // greet a visitor the first time it's used, and never again." Namespaced
+  // as `soma-affordance:<namespace>:<id>:introduced` so it can never collide
+  // with soma-guide.js's own `soma-guide:<persona.id>:introduced` keys, even
+  // on a page running both widgets. `namespace` identifies the KIND of
+  // affordance (e.g. 'soma-feedback'); `id` identifies WHICH instance (here,
+  // the site). Documented as the canonical copy-source in
+  // SOMA/standards/SOMA-AFFORDANCE-INTRO-ONCE.md.
+  function affordanceIntroduced(namespace, id) {
+    try { return window.localStorage.getItem('soma-affordance:' + namespace + ':' + id + ':introduced') === '1'; }
+    catch (_) { return false; } // no localStorage — fail open (never withhold the intro) rather than fail closed (nag forever)
+  }
+  function markAffordanceIntroduced(namespace, id) {
+    try { window.localStorage.setItem('soma-affordance:' + namespace + ':' + id + ':introduced', '1'); }
+    catch (_) { /* localStorage may be unavailable; non-fatal — worst case, greets again next time. */ }
+  }
+
   // Optional per-site auth-header hook: window.somaFeedbackAuthHeader, sync or
   // async, returning a full "Bearer ..." string or null. Additive — a site
   // without this (14 of 15 today) just sends no Authorization header, same as
@@ -158,6 +213,31 @@
   var closeBtn = el('button', { class: 'soma-feedback-close', type: 'button', 'aria-label': 'Close' }, [document.createTextNode('×')]);
   heading.appendChild(closeBtn);
 
+  // v4.1 introduce-once: a single line shown ONLY the first time this
+  // browser ever opens the panel. Content lives here (not in CSS) so it can
+  // change without touching layout rules.
+  var introLine = el('div', {
+    class: 'soma-feedback-intro',
+    hidden: 'hidden',
+    text: 'Hi — I’m here whenever you want to leave feedback.',
+  });
+
+  // v3.3 mode chooser — first thing shown when the panel opens (unless mid a
+  // request-flow clarify loop, see openPanel). Two registers, kept genuinely
+  // separate: a review never touches the clarify/build-intent machinery below.
+  var chooseRequestBtn = el('button', { class: 'soma-feedback-mode-choice', type: 'button' }, [
+    el('strong', { text: 'Request a change' }),
+    el('span', { class: 'soma-feedback-mode-choice-sub', text: 'Something to fix or build.' }),
+  ]);
+  var chooseReviewBtn = el('button', { class: 'soma-feedback-mode-choice', type: 'button' }, [
+    el('strong', { text: 'Leave a review / say thanks' }),
+    el('span', { class: 'soma-feedback-mode-choice-sub', text: 'Appreciation, in context — not a build request.' }),
+  ]);
+  var modeChooser = el('div', { class: 'soma-feedback-mode-chooser' }, [chooseRequestBtn, chooseReviewBtn]);
+  var modeSwitch = el('button', { class: 'soma-feedback-mode-switch', type: 'button', hidden: 'hidden' }, [
+    document.createTextNode('‹ choose a different type'),
+  ]);
+
   // Visible confirmation of what context is being attached — otherwise a
   // reporter has no way to tell whether the app/page/area is actually
   // captured, since it's collected silently into the payload. Recomputed
@@ -178,6 +258,9 @@
   var submitBtn = el('button', { class: 'soma-feedback-submit', type: 'button' }, [document.createTextNode('Submit')]);
   var actions = el('div', { class: 'soma-feedback-actions' }, [submitBtn]);
   var statusLine = el('div', { class: 'soma-feedback-status', 'aria-live': 'polite' });
+  // v4: the one-tap lane correction, shown only in the acknowledgment and only
+  // when the lane was inferred rather than stated by a human.
+  var kindCorrection = el('div', { class: 'soma-feedback-kind-correction', hidden: 'hidden' });
 
   var thread = el('div', { class: 'soma-feedback-thread', hidden: 'hidden', 'aria-live': 'polite' });
   var clarifyReply = el('textarea', {
@@ -201,18 +284,72 @@
   if (noGoogle) adminLink.hidden = true; // no Google flow to trigger — the site verifies admin via its own session instead
   else footer.appendChild(adminLink);
 
+  // v3.3: the entire existing request flow, unchanged in behavior, now lives
+  // in its own section that's shown only after "Request a change" is chosen.
+  var requestSection = el('div', { class: 'soma-feedback-request-section', hidden: 'hidden' });
+  requestSection.appendChild(textarea);
+  requestSection.appendChild(actions);
+  requestSection.appendChild(statusLine);
+  requestSection.appendChild(kindCorrection);
+  requestSection.appendChild(thread);
+  requestSection.appendChild(clarifyControls);
+  requestSection.appendChild(retryBtn);
+  requestSection.appendChild(footer);
+
+  // v3.3 review section — freeform text + optional 1-5 star signal. No
+  // clarify loop, no build-intent detection, no admin gate: a review always
+  // posts with kind:"review" and the backend never routes it into the build
+  // queue (see feedback-svc handleFeedback: kind==='review' short-circuits
+  // before the clarity/build-intent path entirely).
+  var reviewTextarea = el('textarea', {
+    class: 'soma-feedback-textarea',
+    placeholder: 'Say thanks, or tell the team what landed well.',
+    rows: '5',
+  });
+  var starButtons = [1, 2, 3, 4, 5].map(function (n) {
+    return el('button', {
+      class: 'soma-feedback-star',
+      type: 'button',
+      'data-value': String(n),
+      'aria-label': 'Rate ' + n + ' of 5 (optional)',
+      'aria-pressed': 'false',
+    }, [document.createTextNode('★')]);
+  });
+  var starRow = el('div', { class: 'soma-feedback-star-row' }, starButtons);
+  var reviewSubmitBtn = el('button', { class: 'soma-feedback-submit', type: 'button' }, [document.createTextNode('Send')]);
+  var reviewActions = el('div', { class: 'soma-feedback-actions' }, [reviewSubmitBtn]);
+  var reviewStatusLine = el('div', { class: 'soma-feedback-status', 'aria-live': 'polite' });
+  var reviewFooter = el('div', { class: 'soma-feedback-footer' }, [
+    el('span', { class: 'soma-feedback-footer-text', text: 'Shared with the team as recognition — never becomes a build item.' }),
+  ]);
+  var reviewSection = el('div', { class: 'soma-feedback-review-section', hidden: 'hidden' });
+  reviewSection.appendChild(reviewTextarea);
+  reviewSection.appendChild(starRow);
+  reviewSection.appendChild(reviewActions);
+  reviewSection.appendChild(reviewStatusLine);
+  reviewSection.appendChild(reviewFooter);
+
   panel.appendChild(heading);
+  panel.appendChild(introLine);
   panel.appendChild(contextLine);
-  panel.appendChild(textarea);
+  // v4 (2026-08-02, Mike: "feedback should not require the extra click to say
+  // whether it is a request or a compliment"). The chooser and the mode switch
+  // are BUILT but never mounted — the elements stay so the review section, the
+  // stars, and every handler below keep working unchanged for the correction
+  // flow, while the fork that used to greet you is simply gone. One box, one
+  // Send; the server infers the lane from the content and the acknowledgment
+  // says which one it picked, with one tap to move it.
+  //
+  // Deliberately not deleted outright: the review path is still reachable, and
+  // ripping the DOM out would mean rewriting reviewSection's whole state
+  // machine in the same pass that changes what 18 live sites do.
+  void modeSwitch;
+  void modeChooser;
   panel.appendChild(nameInput);
   panel.appendChild(emailInput);
   panel.appendChild(honeypot);
-  panel.appendChild(actions);
-  panel.appendChild(statusLine);
-  panel.appendChild(thread);
-  panel.appendChild(clarifyControls);
-  panel.appendChild(retryBtn);
-  panel.appendChild(footer);
+  panel.appendChild(requestSection);
+  panel.appendChild(reviewSection);
   mount.appendChild(panel);
   mount.appendChild(tab);
 
@@ -245,8 +382,283 @@
     }, 6000);
   }
 
+  // ── Draggable, remembered position (v4.2) ──────────────────────────────
+  // Stored per site in this browser, as offsets from the nearest corner:
+  // {ax:'left'|'right', ox, ay:'top'|'bottom', oy}. No saved position means the
+  // CSS default corner, untouched, so a chip nobody moved looks exactly as before.
+  var POSITION_KEY = 'position:' + ((script && script.getAttribute('data-site')) || window.location.host || 'site');
+  var DRAG_THRESHOLD_PX = 5;
+  var EDGE_MARGIN_PX = 8;
+  var ignoreNextClick = false;   // the click a browser fires at the end of a drag
+  var drag = null;
+  tab.setAttribute('title', 'Drag to move. Arrow keys move it; Home puts it back.');
+  tab.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown ArrowLeft ArrowRight Home');
+
+  function viewport() {
+    return { w: document.documentElement.clientWidth || window.innerWidth, h: window.innerHeight };
+  }
+  function readPosition() {
+    try {
+      var p = JSON.parse(loadRemembered(POSITION_KEY) || 'null');
+      var ok = p && (p.ax === 'left' || p.ax === 'right') && (p.ay === 'top' || p.ay === 'bottom')
+        && isFinite(p.ox) && isFinite(p.oy);
+      return ok ? p : null;
+    } catch (_) { return null; }
+  }
+  // Top-left corner (x, y) of a w×h tab -> a corner-anchored position, clamped
+  // so the whole tab stays on screen.
+  function positionFromBox(x, y, w, h) {
+    var v = viewport();
+    x = Math.round(Math.min(Math.max(x, EDGE_MARGIN_PX), Math.max(EDGE_MARGIN_PX, v.w - w - EDGE_MARGIN_PX)));
+    y = Math.round(Math.min(Math.max(y, EDGE_MARGIN_PX), Math.max(EDGE_MARGIN_PX, v.h - h - EDGE_MARGIN_PX)));
+    var ax = (x + w / 2) < v.w / 2 ? 'left' : 'right';
+    var ay = (y + h / 2) < v.h / 2 ? 'top' : 'bottom';
+    return {
+      ax: ax, ox: Math.round(ax === 'left' ? x : v.w - x - w),
+      ay: ay, oy: Math.round(ay === 'top' ? y : v.h - y - h),
+    };
+  }
+  function setPositionStyles(p) {
+    var s = mount.style;
+    if (!p) {
+      s.left = s.right = s.top = s.bottom = '';
+      mount.classList.remove('soma-feedback-root--moved');
+      return;
+    }
+    s.left = p.ax === 'left' ? p.ox + 'px' : 'auto';
+    s.right = p.ax === 'right' ? p.ox + 'px' : 'auto';
+    s.top = p.ay === 'top' ? p.oy + 'px' : 'auto';
+    s.bottom = p.ay === 'bottom' ? p.oy + 'px' : 'auto';
+    mount.classList.add('soma-feedback-root--moved');
+  }
+  // The panel and the toast open toward the middle of the screen, and the
+  // panel is shifted sideways and height-capped so it never leaves the screen.
+  function placePanel() {
+    var moved = mount.classList.contains('soma-feedback-root--moved');
+    var r = tab.getBoundingClientRect();
+    var v = viewport();
+    var alignRight = moved && (r.left + r.width / 2) > v.w / 2;
+    var openDown = moved && (r.top + r.height / 2) < v.h / 2;
+    mount.classList.toggle('soma-feedback-root--align-right', alignRight);
+    mount.classList.toggle('soma-feedback-root--open-down', openDown);
+    if (!moved) {
+      panel.style.left = panel.style.right = panel.style.maxHeight = '';
+      return;
+    }
+    var room = openDown ? v.h - r.bottom - 8 - EDGE_MARGIN_PX : r.top - 8 - EDGE_MARGIN_PX;
+    panel.style.maxHeight = Math.max(160, room) + 'px';
+    if (panel.hidden) return;
+    var pw = panel.offsetWidth;
+    if (alignRight) {
+      panel.style.left = 'auto';
+      panel.style.right = Math.min(0, r.right - pw - EDGE_MARGIN_PX) + 'px';
+    } else {
+      panel.style.right = 'auto';
+      panel.style.left = Math.min(0, v.w - EDGE_MARGIN_PX - (r.left + pw)) + 'px';
+    }
+  }
+  // Re-apply the saved position, clamped to the current viewport (not saved:
+  // a narrow window must not overwrite where the tab lives on a wide one).
+  function applyPosition() {
+    var p = readPosition();
+    setPositionStyles(p);
+    if (p) {
+      var r = tab.getBoundingClientRect();
+      setPositionStyles(positionFromBox(r.left, r.top, r.width, r.height));
+    }
+    placePanel();
+  }
+  function savePosition(p) {
+    remember(POSITION_KEY, JSON.stringify(p));
+    setPositionStyles(p);
+    placePanel();
+  }
+  function resetPosition() {
+    try { window.localStorage.removeItem('soma-feedback:' + POSITION_KEY); } catch (_) { /* non-fatal */ }
+    setPositionStyles(null);
+    placePanel();
+  }
+
+  tab.addEventListener('pointerdown', function (e) {
+    ignoreNextClick = false;
+    if (e.button !== 0) return;
+    var r = tab.getBoundingClientRect();
+    drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height, moved: false };
+    // Capture now, not when the drag starts: a fast pointer is already off the
+    // 44px tab by its first move event, and those events would go to the page.
+    // A tap still ends in a click on the tab.
+    try { tab.setPointerCapture(e.pointerId); } catch (_) { /* no capture: moves are seen while over the tab */ }
+  });
+  tab.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.moved) {
+      if (Math.abs(e.clientX - drag.sx) < DRAG_THRESHOLD_PX && Math.abs(e.clientY - drag.sy) < DRAG_THRESHOLD_PX) return;
+      drag.moved = true;
+      mount.classList.add('soma-feedback-root--dragging');
+    }
+    e.preventDefault();
+    setPositionStyles(positionFromBox(e.clientX - drag.dx, e.clientY - drag.dy, drag.w, drag.h));
+    placePanel();
+  });
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (drag.moved) {
+      mount.classList.remove('soma-feedback-root--dragging');
+      var r = tab.getBoundingClientRect();
+      savePosition(positionFromBox(r.left, r.top, r.width, r.height));
+      ignoreNextClick = true;
+    }
+    drag = null;
+  }
+  tab.addEventListener('pointerup', endDrag);
+  tab.addEventListener('pointercancel', endDrag);
+  // The click that follows a drag is not a tap. Capture phase, so it runs
+  // before the open/close handler registered below.
+  tab.addEventListener('click', function (e) {
+    // Only that one click. A new press or keypress clears it, so a browser that
+    // fires no click after a captured drag cannot eat the next real tap.
+    if (ignoreNextClick) { ignoreNextClick = false; e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+  tab.addEventListener('keydown', function (e) {
+    ignoreNextClick = false;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    var step = e.shiftKey ? 64 : 16;
+    var r = tab.getBoundingClientRect();
+    var x = r.left;
+    var y = r.top;
+    if (e.key === 'ArrowLeft') x -= step;
+    else if (e.key === 'ArrowRight') x += step;
+    else if (e.key === 'ArrowUp') y -= step;
+    else if (e.key === 'ArrowDown') y += step;
+    else if (e.key === 'Home') { e.preventDefault(); resetPosition(); return; }
+    else return;
+    e.preventDefault();
+    savePosition(positionFromBox(x, y, r.width, r.height));
+  });
+  var resizeFrame = 0;
+  window.addEventListener('resize', function () {
+    if (resizeFrame) return;
+    resizeFrame = window.requestAnimationFrame(function () { resizeFrame = 0; applyPosition(); });
+  });
+
+  // Fresh build: opt-in, copy-once, zero dependencies. Mike Wolf + Codex,
+  // 2026-09-11. See SOMA-STD-fresh-build.md for the host contract.
+  function startFreshBuild() {
+    var meta = document.querySelector('meta[name="soma-build"]');
+    var loaded = meta && meta.content.trim();
+    if (!loaded || typeof window.fetch !== 'function') return;
+    var pending = '';
+    var active = false;
+    var fetching = false;
+    var humanOnly = false;
+    var attempted = false;
+    var lastActivity = Date.now();
+    var banner;
+    var storageKey = 'soma-feedback:fresh-build:guard';
+
+    function unsaved() {
+      try {
+        return (typeof window.SOMA_HAS_UNSAVED === 'function' && window.SOMA_HAS_UNSAVED()) ||
+          requestInFlight || reviewInFlight || textarea.value.trim() ||
+          reviewTextarea.value.trim() || clarifyReply.value.trim() || pendingQuestion;
+      } catch (_) { return true; }
+    }
+    function showBanner() {
+      if (banner) return;
+      var button = el('button', { type: 'button', text: 'Reload' });
+      banner = el('div', { class: 'soma-feedback-fresh-build', role: 'status' }, [
+        document.createTextNode('A newer version is ready — '), button,
+      ]);
+      button.addEventListener('click', function () {
+        // This generic widget cannot flush a site's saves. Keep drafts intact.
+        if (unsaved()) {
+          button.textContent = 'Save your work, then Reload';
+          return;
+        }
+        window.location.reload();
+      });
+      document.body.appendChild(banner);
+    }
+    function reserveReload() {
+      try {
+        var raw = window.sessionStorage.getItem(storageKey);
+        var guard = raw ? JSON.parse(raw) : { builds: [], times: [] };
+        if (!guard || !Array.isArray(guard.builds) || !Array.isArray(guard.times) ||
+            !guard.builds.every(function (b) { return typeof b === 'string'; }) ||
+            !guard.times.every(function (t) { return typeof t === 'number' && isFinite(t); })) return false;
+        var now = Date.now();
+        guard.times = guard.times.filter(function (t) { return now - t < 600000; });
+        // Latch the loaded build, so stale HTML cannot loop even if deployments change.
+        if (guard.builds.indexOf(loaded) !== -1 || guard.times.length >= 2) return false;
+        guard.builds.push(loaded);
+        guard.times.push(now);
+        var encoded = JSON.stringify(guard);
+        window.sessionStorage.setItem(storageKey, encoded);
+        return window.sessionStorage.getItem(storageKey) === encoded;
+      } catch (_) { return false; } // Fail closed when durability is unavailable.
+    }
+    function reconsider() {
+      if (!pending || attempted) return;
+      if (unsaved()) humanOnly = true;
+      if (humanOnly) { showBanner(); return; }
+      var focused = document.activeElement;
+      while (focused && focused.shadowRoot && focused.shadowRoot.activeElement) {
+        focused = focused.shadowRoot.activeElement;
+      }
+      var editing = focused && (focused.isContentEditable ||
+        /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName));
+      var dialog = Array.prototype.some.call(
+        document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"]'),
+        function (node) { return !node.hidden && window.getComputedStyle(node).visibility !== 'hidden' && node.getClientRects().length > 0; }
+      );
+      if (document.visibilityState !== 'visible' || editing || dialog ||
+          !panel.hidden || Date.now() - lastActivity < 30000) { showBanner(); return; }
+      if (!reserveReload()) { humanOnly = true; showBanner(); return; }
+      attempted = true;
+      window.location.reload();
+    }
+    function check() {
+      if (fetching || attempted) return;
+      fetching = true;
+      Promise.resolve().then(function () {
+        return window.fetch('/version.json', { cache: 'no-store' });
+      }).then(function (response) {
+        if (!response.ok) throw new Error('unavailable');
+        return response.json();
+      }).then(function (data) {
+        if (!data || typeof data.build !== 'string' || !data.build.trim()) return;
+        if (!active) {
+          active = true;
+          window.setInterval(check, 300000);
+          window.setInterval(reconsider, 1000);
+          document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') check();
+          });
+        }
+        pending = data.build.trim() !== loaded ? data.build.trim() : '';
+        if (!pending && banner) { banner.remove(); banner = null; }
+        reconsider();
+      }).catch(function () { /* Missing file, SPA HTML, offline: silent. */ })
+        .then(function () {
+          fetching = false;
+          if (!active) activityEvents.forEach(function (event) {
+            document.removeEventListener(event, recordActivity, true);
+          });
+        });
+    }
+    // Observe activity during the initial probe too; never infer idle from fetch time.
+    function recordActivity() { lastActivity = Date.now(); }
+    var activityEvents = ['keydown', 'input', 'pointerdown', 'pointermove', 'touchstart', 'scroll', 'focusin'];
+    activityEvents.forEach(function (event) {
+      document.addEventListener(event, recordActivity, { capture: true, passive: true });
+    });
+    check(); // No polling or visibility retries until this probe validates the contract.
+  }
+
   function ready() {
     document.body.appendChild(mount);
+    applyPosition();
+    startFreshBuild();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', ready);
@@ -274,6 +686,20 @@
   // NEXT submit is the human confirming the clarified restatement, so it carries
   // confirmedRefine:true and the backend files it directly instead of looping.
   var pendingRefineConfirm = false;
+
+  // v4: opens straight into the composer. Was `null` (show the chooser first);
+  // the chooser is no longer mounted, so there is nothing to choose and the
+  // panel is a single box from the moment it opens. 'review' is still reachable
+  // — only now by correcting the inference after the fact, not by predicting it
+  // before typing.
+  var mode = 'request';
+  // The text of the submission the acknowledgment is currently describing, so
+  // the one-tap correction can re-file the same words in the other lane.
+  var lastSubmittedText = '';
+  var reviewInFlight = false;
+  var reviewPhase = 'idle'; // idle | processing | accepted | error
+  var reviewRating = 0;
+  var reviewAcceptedRearmTimer = null;
 
   function closestArea(node) {
     while (node && node !== document) {
@@ -405,6 +831,12 @@
     clarifyControls.hidden = true;
     clarifyReply.value = '';
     retryBtn.hidden = true;
+    // NOTE: the lane correction is deliberately NOT cleared here. resetFlow runs
+    // from rearmAfterAccept 1400ms after the acknowledgment — clearing it there
+    // gave the correction a 1.4-second lifetime, which is no affordance at all.
+    // It belongs to the submission just acknowledged, so it is cleared when the
+    // NEXT one starts (beginSubmit) or the panel closes, not when the composer
+    // rearms. Found by clicking it in a browser and having it already be gone.
     if (!preserveText) textarea.value = '';
     // A refine-confirm only applies to the exact clarified text we put in the
     // box; a full reset (new/cleared item) drops it.
@@ -414,19 +846,96 @@
 
   function updateControls() {
     var lockedForClarify = !thread.hidden && phase !== 'idle';
-    var locked = requestInFlight || lockedForClarify || phase === 'accepted';
-    textarea.disabled = locked;
+    var locked = requestInFlight || lockedForClarify || phase === 'accepted' ||
+      reviewInFlight || reviewPhase === 'accepted';
+    textarea.disabled = requestInFlight || lockedForClarify || phase === 'accepted';
     nameInput.disabled = locked;
     emailInput.disabled = locked;
     submitBtn.disabled = requestInFlight || phase === 'accepted' || !thread.hidden;
     retryBtn.disabled = requestInFlight;
     clarifyReply.disabled = requestInFlight || phase !== 'clarify' || !pendingQuestion;
     clarifySend.disabled = requestInFlight || phase !== 'clarify' || !pendingQuestion;
+
+    var reviewLocked = reviewInFlight || reviewPhase === 'accepted';
+    reviewTextarea.disabled = reviewLocked;
+    reviewSubmitBtn.disabled = reviewLocked;
+    starButtons.forEach(function (b) { b.disabled = reviewLocked; });
   }
 
+  // Shows the chooser, or the section for whichever mode is active. Called on
+  // open and every time mode changes.
+  function renderMode() {
+    modeChooser.hidden = mode !== null;
+    modeSwitch.hidden = mode === null;
+    requestSection.hidden = mode !== 'request';
+    reviewSection.hidden = mode !== 'review';
+    nameInput.hidden = mode === null;
+    emailInput.hidden = mode === null;
+  }
+
+  function resetReviewFlow() {
+    reviewPhase = 'idle';
+    reviewInFlight = false;
+    reviewTextarea.value = '';
+    reviewRating = 0;
+    starButtons.forEach(function (b) {
+      b.classList.remove('soma-feedback-star--selected');
+      b.setAttribute('aria-pressed', 'false');
+    });
+    reviewStatusLine.textContent = '';
+    reviewStatusLine.className = 'soma-feedback-status';
+  }
+
+  chooseRequestBtn.addEventListener('click', function () {
+    mode = 'request';
+    renderMode();
+    updateControls();
+    textarea.focus();
+  });
+  chooseReviewBtn.addEventListener('click', function () {
+    mode = 'review';
+    renderMode();
+    updateControls();
+    reviewTextarea.focus();
+  });
+  modeSwitch.addEventListener('click', function () {
+    mode = null;
+    renderMode();
+  });
+  starButtons.forEach(function (btn, idx) {
+    btn.addEventListener('click', function () {
+      var val = idx + 1;
+      reviewRating = reviewRating === val ? 0 : val; // click the same star again to clear
+      starButtons.forEach(function (b, i) {
+        var selected = i < reviewRating;
+        b.classList.toggle('soma-feedback-star--selected', selected);
+        b.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
+    });
+  });
+
   function openPanel() {
+    // v4.1 introduce-once: check BEFORE marking, so this open is the one
+    // that shows it. Every open after this one — including a reload, a new
+    // tab, or a fresh session — reads the same localStorage key and finds
+    // it already set, so the line never shows again from this browser.
+    if (!affordanceIntroduced('soma-feedback', site)) {
+      introLine.hidden = false;
+      markAffordanceIntroduced('soma-feedback', site);
+    } else {
+      introLine.hidden = true;
+    }
     if (phase === 'accepted') resetFlow(false);
+    if (reviewPhase === 'accepted') resetReviewFlow();
+    // v4: reopen at the composer. This used to reset to `null`, meaning "show
+    // the chooser" — with no chooser mounted that reset hid the entire panel
+    // body, leaving a header and nothing to type into. Caught in a browser; no
+    // unit test would have seen it, because every individual element was
+    // correct and only the mode they were switched by was gone.
+    if (mode !== 'review') mode = 'request';
+    renderMode();
     panel.hidden = false;
+    placePanel();   // v4.2: open toward the middle of the screen from wherever the tab is
     tab.setAttribute('aria-expanded', 'true');
     clearTabResult();
     var area = currentArea();
@@ -434,16 +943,21 @@
     resolveIdentity(applyIdentity);
     attemptSilentGoogleCredential();
     updateControls();
-    if (phase === 'clarify') clarifyReply.focus();
+    if (mode === null) chooseRequestBtn.focus();
+    else if (phase === 'clarify') clarifyReply.focus();
+    else if (mode === 'review') reviewTextarea.focus();
     else textarea.focus();
   }
 
   function closePanel(force) {
     if (panel.hidden) return;
-    if (requestInFlight && !force) return;
+    if ((requestInFlight || reviewInFlight) && !force) return;
     var focusWasInPanel = panel.contains(document.activeElement);
     clearAcceptedRearmTimer();
     clearInactivityCloseTimer();
+    // The correction is scoped to the acknowledgment on screen; closing ends it.
+    clearKindCorrection();
+    if (reviewAcceptedRearmTimer) { window.clearTimeout(reviewAcceptedRearmTimer); reviewAcceptedRearmTimer = null; }
     if (phase === 'clarify' || phase === 'error') resetFlow(true);
     panel.hidden = true;
     tab.setAttribute('aria-expanded', 'false');
@@ -576,7 +1090,11 @@
     acceptedRearmTimer = null;
     if (phase !== 'accepted') return;
     resetFlow(false);
-    setStatus('');
+    // Keep the acknowledgment on screen while a lane correction is still being
+    // offered. Clearing it left "Meant it as a change request?" floating with no
+    // statement of what was actually filed — an offer to fix something the
+    // person can no longer see.
+    if (kindCorrection.hidden) setStatus('');
     clearTabResult();
     if (!panel.hidden) {
       textarea.focus();
@@ -584,21 +1102,112 @@
     }
   }
 
+  /**
+   * Lane correction (v4): "we filed it as X; one tap if it was really Y."
+   * (Not written as "v4 —": soma-chip-check.py reads the last line of that
+   * shape as the chip's version, and this one made every build read as v4.)
+   *
+   * Only rendered when the server says the lane was INFERRED. If a human already
+   * told us (i.e. this IS the correction), we do not ask again — being asked to
+   * confirm your own correction is worse than the guess was.
+   */
+  function clearKindCorrection() {
+    kindCorrection.hidden = true;
+    kindCorrection.innerHTML = '';
+    lastSubmittedText = '';
+  }
+
+  function renderKindCorrection(wasInferred, kind) {
+    kindCorrection.innerHTML = '';
+    if (!wasInferred) {
+      kindCorrection.hidden = true;
+      return;
+    }
+    var other = kind === 'review' ? 'request' : 'review';
+    var prompt = kind === 'review'
+      ? 'Meant it as a change request?'
+      : 'Just saying thanks?';
+    var action = kind === 'review' ? 'File it as a request' : 'Send it as a thank-you';
+    var label = el('span', { class: 'soma-feedback-kind-correction-text', text: prompt + ' ' });
+    var btn = el('button', {
+      class: 'soma-feedback-kind-correction-btn',
+      type: 'button',
+      text: action,
+    });
+    btn.addEventListener('click', function () {
+      correctKind(other, btn);
+    });
+    kindCorrection.appendChild(label);
+    kindCorrection.appendChild(btn);
+    kindCorrection.hidden = false;
+  }
+
+  /**
+   * Re-file the same words in the other lane, with `kind` set explicitly so the
+   * server records it as a human judgment rather than re-inferring and getting
+   * the same answer.
+   *
+   * This files a SECOND card rather than moving the first: both lanes are
+   * already-sent emails to the board, and there is nothing to retract. The
+   * estate's existing answer to that shape is to supersede and say so, not to
+   * pretend the first never happened.
+   */
+  function correctKind(kind, btn) {
+    if (!lastSubmittedText) return;
+    btn.disabled = true;
+    btn.textContent = 'Moving…';
+    var payload = makePayload();
+    payload.text = lastSubmittedText;
+    payload.kind = kind;
+    payload.conversation = [];
+    resolveAuthHeader(function (authHeader) {
+      var headers = { 'Content-Type': 'application/json' };
+      if (authHeader) headers['Authorization'] = authHeader;
+      fetch(endpoint, { method: 'POST', headers: headers, body: JSON.stringify(payload) })
+        .then(function (resp) {
+          if (!resp.ok) throw new Error('status ' + resp.status);
+          return resp.json();
+        })
+        .then(function () {
+          kindCorrection.hidden = true;
+          var moved = kind === 'review'
+            ? 'Moved ✓ — filed as a thank-you instead.'
+            : 'Moved ✓ — filed as a change request instead.';
+          setStatus(moved, 'success');
+          showToast('✓ ' + moved);
+        })
+        .catch(function (err) {
+          console.error('[soma-feedback] kind correction failed:', err);
+          btn.disabled = false;
+          btn.textContent = 'Try again';
+        });
+    });
+  }
+
   function handleAccepted(data) {
     var build = !!(data && data.build);
     var queueCount = data && typeof data.queueCount === 'number' ? data.queueCount : null;
+    var kind = data && data.kind === 'review' ? 'review' : 'request';
     phase = 'accepted';
     retryBtn.hidden = true;
     thread.hidden = true;
     clarifyControls.hidden = true;
     var msg;
-    if (build && queueCount !== null) {
+    if (kind === 'review') {
+      msg = 'Sent as a thank-you ✓ — the team will see it (' + stampTime(data && data.filedAt) + ')';
+    } else if (build && queueCount !== null) {
       msg = 'Accepted ✓ — ' + queueCount + ' item' + (queueCount === 1 ? '' : 's') + ' in queue (' + stampTime(data && data.filedAt) + ')';
     } else if (build) {
       msg = 'Accepted ✓ — queued to build (' + stampTime(data && data.filedAt) + ')';
     } else {
       msg = 'Filed ✓ — the team has it (' + stampTime(data && data.filedAt) + ')';
     }
+    // v4: name the lane we picked and offer exactly one tap to move it. This is
+    // the whole reason the up-front chooser could go away — the cost of a wrong
+    // guess is one click AFTER the fact, paid only when we are wrong, instead of
+    // one click BEFORE the fact, paid by everyone every time. The correction is
+    // also the only ground truth the classifier ever gets, so it is logged.
+    renderKindCorrection(data && data.kindInferred, kind);
     setStatus(msg, 'success');
     setTabResult('success');
     // The prominent, beside-the-dialog confirmation (feedback #3/#5). The
@@ -695,12 +1304,97 @@
     }
     remember('name', nameInput.value.trim());
     remember('email', emailInput.value.trim());
+    // A new submission supersedes the last acknowledgment, so its correction
+    // goes with it — otherwise the button would re-file the PREVIOUS message.
+    clearKindCorrection();
+    // Held for the one-tap lane correction, which re-files these exact words.
+    lastSubmittedText = text;
     conversation = [{ role: 'user', content: text }];
     pendingQuestion = '';
     currentRetry = postCurrent;
     renderThread();
     postCurrent();
   }
+
+  // v3.3 review submit — a single fetch, no clarify loop, no build-intent
+  // detection, no admin gate. kind:"review" tells feedback-svc to skip the
+  // clarity/build-intent path entirely and file this as recognition, not a
+  // work item (see server.js handleFeedback).
+  function makeReviewPayload() {
+    return {
+      site: site,
+      page: document.title || '',
+      url: window.location.href,
+      area: currentArea(),
+      kind: 'review',
+      text: reviewTextarea.value.trim(),
+      rating: reviewRating > 0 ? reviewRating : null,
+      name: nameInput.value.trim() || 'anonymous',
+      email: emailInput.value.trim(),
+      pageText: capturePageText(),
+      hp: honeypot.value,
+    };
+  }
+
+  function submitReview() {
+    var text = reviewTextarea.value.trim();
+    if (!text) {
+      reviewStatusLine.textContent = 'Type something first.';
+      reviewStatusLine.className = 'soma-feedback-status soma-feedback-status--error';
+      reviewTextarea.focus();
+      return;
+    }
+    remember('name', nameInput.value.trim());
+    remember('email', emailInput.value.trim());
+    reviewInFlight = true;
+    reviewPhase = 'processing';
+    reviewStatusLine.textContent = 'Sending…';
+    reviewStatusLine.className = 'soma-feedback-status';
+    updateControls();
+
+    resolveAuthHeader(function (authHeader) {
+      var headers = { 'Content-Type': 'application/json' };
+      if (authHeader) headers['Authorization'] = authHeader;
+      fetch(endpoint, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(makeReviewPayload()),
+      })
+        .then(function (resp) {
+          if (!resp.ok) throw new Error('status ' + resp.status);
+          return resp.json();
+        })
+        .then(function (data) {
+          reviewPhase = 'accepted';
+          reviewStatusLine.textContent = 'Thank you sent — the team will see it. ✓';
+          reviewStatusLine.className = 'soma-feedback-status soma-feedback-status--success';
+          setTabResult('success');
+          showToast('✓ Thanks sent — the team will see it.');
+          reviewTextarea.value = '';
+          if (reviewAcceptedRearmTimer) window.clearTimeout(reviewAcceptedRearmTimer);
+          reviewAcceptedRearmTimer = window.setTimeout(function () {
+            reviewAcceptedRearmTimer = null;
+            if (reviewPhase !== 'accepted') return;
+            resetReviewFlow();
+            updateControls();
+            if (!panel.hidden && mode === 'review') reviewTextarea.focus();
+          }, ACCEPTED_REARM_DELAY_MS);
+        })
+        .catch(function (err) {
+          console.error('[soma-feedback] review submit failed:', err);
+          reviewPhase = 'error';
+          reviewStatusLine.textContent = 'Could not send just now — your text is still here.';
+          reviewStatusLine.className = 'soma-feedback-status soma-feedback-status--error';
+          setTabResult('error');
+        })
+        .then(function () {
+          reviewInFlight = false;
+          updateControls();
+        });
+    });
+  }
+
+  reviewSubmitBtn.addEventListener('click', submitReview);
 
   function sendClarification() {
     if (!pendingQuestion) return;
